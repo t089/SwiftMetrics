@@ -31,8 +31,10 @@ let package = Package(
   products: [
         .library(
             name: "SwiftMetrics",
-            targets: ["SwiftMetrics",
-                "SwiftMetricsKitura",
+            targets: ["SwiftMetrics"]),
+        .library(
+          name: "SwiftMetricsKitura",
+          targets: ["SwiftMetricsKitura",
                 "SwiftBAMDC",
                 "SwiftMetricsBluemix",
                 "SwiftMetricsDash",
