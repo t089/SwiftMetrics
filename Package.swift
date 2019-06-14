@@ -28,10 +28,9 @@ let package = Package(
             targets: ["SwiftMetrics"]),
     ],
   dependencies: [
-    .package(url: "https://github.com/IBM-Swift/Swift-cfenv.git", from: "6.0.0"),
     .package(url: "https://github.com/RuntimeTools/omr-agentcore", .exact("3.2.4-swift4")),
   ],
   targets: [
-      .target(name: "SwiftMetrics", dependencies: ["agentcore", "hcapiplugin", "envplugin", "cpuplugin", "memplugin", "CloudFoundryEnv"]),
+      .target(name: "SwiftMetrics", dependencies: ["agentcore", "hcapiplugin", "envplugin", "cpuplugin", "memplugin"]),
    ]
 )

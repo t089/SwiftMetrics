@@ -16,8 +16,6 @@
 import agentcore
 import Foundation
 import Dispatch
-import Configuration
-import CloudFoundryEnv
 #if os(Linux)
 import Glibc
 #else
@@ -91,75 +89,9 @@ open class SwiftMetrics {
   var sleepInterval: UInt32 = 2
   var latencyEnabled: Bool = false
   let jobsQueue = DispatchQueue(label: "Swift Metrics Jobs Queue")
-  let isRunningOnCloud: Bool
-  public let localSourceDirectory: String
 
   public init() throws {
     self.loaderApi = loader_entrypoint().pointee
-    //find the SwiftMetrics directory where swiftmetrics.properties and SwiftMetricsDash public folder are
-    let fm = FileManager.default
-    let currentDir = fm.currentDirectoryPath
-    let configMgr = ConfigurationManager().load(.environmentVariables)
-    self.isRunningOnCloud = !configMgr.isLocal
-
-    var applicationPath = ""
-    if configMgr.isLocal {
-      var workingPath = ""
-      if currentDir.contains(".build") {
-        ///we're below the Packages directory
-        workingPath = currentDir
-      } else {
-        ///we're above the Packages directory
-        workingPath = CommandLine.arguments[0]
-      }
-      if let i = workingPath.range(of: ".build") {
-        applicationPath = String(workingPath[..<i.lowerBound])
-      }
-    } else {
-      // We're in Bluemix, use the path the swift-buildpack saves libraries to
-      applicationPath = "/home/vcap/app/"
-    }
-
-    // Swift 3.1
-    let checkoutsPath = applicationPath + ".build/checkouts/"
-    if fm.fileExists(atPath: checkoutsPath) {
-      _ = fm.changeCurrentDirectoryPath(checkoutsPath)
-    } else { // Swift 3.0
-      let packagesPath = applicationPath + "Packages/"
-      if fm.fileExists(atPath: packagesPath) {
-        _ = fm.changeCurrentDirectoryPath(packagesPath)
-      }
-    }
-    do {
-      let dirContents = try fm.contentsOfDirectory(atPath: fm.currentDirectoryPath)
-      for dir in dirContents {
-        if dir.contains("SwiftMetrics") {
-          ///that's where we want to be!
-          _ = fm.changeCurrentDirectoryPath(dir)
-        }
-      }
-    } catch {
-      print("SwiftMetrics: Error obtaining contents of directory: \(fm.currentDirectoryPath), \(error).")
-      throw error
-    }
-    let propertiesPath = "\(fm.currentDirectoryPath)/swiftmetrics.properties"
-    if fm.fileExists(atPath: propertiesPath) {
-      self.localSourceDirectory = fm.currentDirectoryPath
-    } else {
-        // could be in Xcode, try source directory
-        let fileName = NSString(string: #file)
-        let installDirPrefixRange: NSRange
-        let installDir = fileName.range(of: "/Sources/SwiftMetrics/SwiftMetrics.swift", options: .backwards)
-        if  installDir.location != NSNotFound {
-          installDirPrefixRange = NSRange(location: 0, length: installDir.location)
-        } else {
-          installDirPrefixRange = NSRange(location: 0, length: fileName.length)
-        }
-        let folderName = fileName.substring(with: installDirPrefixRange)
-        self.localSourceDirectory = folderName
-    }
-    _ = fm.changeCurrentDirectoryPath(currentDir)
-    try self.loadProperties()
     loaderApi.setLogLevels()
     loaderApi.setProperty("agentcore.version", loaderApi.getAgentVersion())
     loaderApi.setProperty("swiftmetrics.version", SWIFTMETRICS_VERSION)
@@ -214,11 +146,7 @@ private func executableFolderURL() -> URL {
 }
 
   private func getDefaultLibraryPath() -> String? {
-    if isRunningOnCloud {
-      // We're in Bluemix, don't set the search path, we don't want to
-      // dynamically load plugins
-      return nil
-    } else {
+    
       let programPath = CommandLine.arguments[0]
 
       if (programPath.contains("xctest")) { // running tests on Mac
@@ -230,23 +158,9 @@ private func executableFolderURL() -> URL {
           return "."
         }
       }
-    }
+    
   }
-
-  private func loadProperties() throws {
-    ///look for healthcenter.properties in current directory
-    let fm = FileManager.default
-    var propertiesPath = ""
-    let localPropertiesPath = fm.currentDirectoryPath + "/swiftmetrics.properties"
-    if fm.fileExists(atPath: localPropertiesPath) {
-      propertiesPath = localPropertiesPath
-    } else {
-      ///use the one in the SwiftMetrics source
-      propertiesPath = self.localSourceDirectory + "/swiftmetrics.properties"
-    }
-    _ = loaderApi.loadPropertiesFile(propertiesPath)
-  }
-
+    
   public func setPluginSearch(toDirectory: URL) {
     if toDirectory.isFileURL {
       loaderApi.logMessage(debug, "setPluginSearch(): Setting plugin path to \(toDirectory.path)")
@@ -309,13 +223,6 @@ private func executableFolderURL() -> URL {
         self.setPluginSearch(toDirectory: URL(fileURLWithPath: defaultLibraryPath, isDirectory: true))
       }
       if !initialized {
-        if isRunningOnCloud {
-          // Attempt to load plugins already resident in the process
-          loaderApi.addPlugin(cloudLibraryPath(for: "envplugin"))
-          loaderApi.addPlugin(cloudLibraryPath(for: "memplugin"))
-          loaderApi.addPlugin(cloudLibraryPath(for: "cpuplugin"))
-          loaderApi.addPlugin(cloudLibraryPath(for: "hcapiplugin"))
-        }
 #if os(macOS)
         // Add plugins one by one in case built with xcode as plugin search path won't work
         loaderApi.addPlugin(xcodeLibraryPath(for: "envplugin"))
@@ -394,11 +301,8 @@ private func executableFolderURL() -> URL {
     if let fromCache = monitorApiLibraryHandleCache { return fromCache }
     // Load the library (failures logged in openLibrary())
     let handle: UnsafeMutableRawPointer?
-    if isRunningOnCloud {
-        handle = openLibrary(at: cloudLibraryPath(for: "hcapiplugin"))
-    } else {
-        handle = openLibrary(at: xcodeLibraryPath(for: "hcapiplugin")) ?? openLibrary(at: pluginSearchLibraryPath(for: "hcapiplugin"))
-    }
+    handle = openLibrary(at: xcodeLibraryPath(for: "hcapiplugin")) ?? openLibrary(at: pluginSearchLibraryPath(for: "hcapiplugin"))
+    
     monitorApiLibraryHandleCache = handle
     return handle
   }
